@@ -7,10 +7,14 @@
 @file:JvmMultifileClass
 package com.snakydesign.livedataextensions
 
+import android.os.Handler
+import android.os.Looper
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
 import com.snakydesign.livedataextensions.livedata.NonNullLiveData
 import com.snakydesign.livedataextensions.livedata.SingleLiveData
+import java.util.concurrent.TimeUnit
+import kotlin.properties.Delegates
 
 
 /**
@@ -161,4 +165,39 @@ fun <T> LiveData<T>.defaultIfNull(default:T):LiveData<T>{
         mutableLiveData.value = it ?: default
     }
     return mutableLiveData
+}
+
+/**
+ * Emits the last value emitted after a specified delay has passed since the last source emission
+ */
+fun <T : Any> LiveData<T>.debounce(
+    delay: Long,
+    timeUnit: TimeUnit
+): LiveData<T> = debounce(delay, timeUnit, Handler(Looper.getMainLooper()))
+
+/**
+ * Emits the last value emitted after a specified delay has passed since the last source emission
+ */
+fun <T : Any> LiveData<T>.debounce(
+    delay: Long,
+    timeUnit: TimeUnit,
+    handler: Handler
+): LiveData<T> {
+    val mediator = MediatorLiveData<T>()
+
+    var lastValue: T by Delegates.notNull()
+
+    val callback = Runnable {
+        mediator.value = lastValue
+    }
+
+    mediator.addSource(this) {
+        handler.removeCallbacks(callback)
+
+        lastValue = it
+
+        handler.postDelayed(callback, timeUnit.toMillis(delay))
+    }
+
+    return mediator
 }

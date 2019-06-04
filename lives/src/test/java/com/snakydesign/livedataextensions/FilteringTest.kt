@@ -1,5 +1,7 @@
 package com.snakydesign.livedataextensions
 
+import android.os.Handler
+import android.os.Looper
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Observer
@@ -7,6 +9,8 @@ import org.junit.*
 import org.mockito.Mockito
 import org.mockito.Mockito.times
 import java.lang.IllegalStateException
+import java.util.concurrent.TimeUnit
+import kotlin.properties.Delegates
 import kotlin.test.assertEquals
 
 /**
@@ -453,4 +457,81 @@ class FilteringTest {
 
         Mockito.verifyNoMoreInteractions(observer)
     }
+
+    @Test
+    fun `setting value to debounce with nonzero delay should not emit the value right away`(){
+        // These tests are mostly pointless at the moment, since we heavily rely on Handler.postDelayed, hence the commented Thread.sleep that would simulate the waiting
+        val observer= Mockito.mock(Observer::class.java) as Observer<Int>
+        val handler = Mockito.mock(Handler::class.java)
+
+        val sourceLiveData = MutableLiveData<Int>()
+        val testingLiveData = sourceLiveData.debounce(1L, TimeUnit.SECONDS, handler)
+        testingLiveData.observeForever(observer)
+
+        sourceLiveData.value = 2
+        assertEquals(null,testingLiveData.value)
+        Mockito.verify(observer, Mockito.never()).onChanged(Mockito.any())
+    }
+
+    @Test
+    fun `setting value to debounce with nonzero delay should emit the value after the delay has passed`() {
+        // These tests are mostly pointless at the moment, since we heavily rely on Handler.postDelayed, hence the commented Thread.sleep that would simulate the waiting
+        val delay = 1L
+        val timeUnit = TimeUnit.SECONDS
+        val handler = Mockito.mock(Handler::class.java)
+
+        var runnable: Runnable by Delegates.notNull()
+        Mockito.`when`(handler.postDelayed(Mockito.any(), Mockito.anyLong())).thenAnswer { invocation ->
+            runnable = invocation.arguments[0] as Runnable
+            null
+        }
+
+        val observer= Mockito.mock(Observer::class.java) as Observer<Int>
+        val sourceLiveData = MutableLiveData<Int>()
+        val testingLiveData = sourceLiveData.debounce(delay, timeUnit, handler)
+        testingLiveData.observeForever(observer)
+
+        sourceLiveData.value = 2
+
+//        Thread.sleep(timeUnit.toMillis(delay))
+        runnable.run()
+
+        assertEquals(2,testingLiveData.value)
+        Mockito.verify(observer).onChanged(2)
+    }
+
+    @Test
+    fun `setting value to debounce with nonzero delay twice within the delay time window should emit the last value after the delay has passed since the last value was set`() {
+        // These tests are mostly pointless at the moment, since we heavily rely on Handler.postDelayed, hence the commented Thread.sleep that would simulate the waiting
+        val delay = 1L
+        val timeUnit = TimeUnit.SECONDS
+        val handler = Mockito.mock(Handler::class.java)
+
+        var runnable: Runnable by Delegates.notNull()
+        Mockito.`when`(handler.postDelayed(Mockito.any(), Mockito.anyLong())).thenAnswer { invocation ->
+            runnable = invocation.arguments[0] as Runnable
+            null
+        }
+
+        val observer= Mockito.mock(Observer::class.java) as Observer<Int>
+        val sourceLiveData = MutableLiveData<Int>()
+        val testingLiveData = sourceLiveData.debounce(delay, timeUnit, handler)
+        testingLiveData.observeForever(observer)
+
+        sourceLiveData.value = 2
+//        Thread.sleep(timeUnit.toMillis(delay) / 2)
+
+        sourceLiveData.value = 3
+//        Thread.sleep(timeUnit.toMillis(delay) / 2)
+        assertEquals(null,testingLiveData.value)
+        Mockito.verify(observer, Mockito.never()).onChanged(Mockito.any())
+
+//        Thread.sleep(timeUnit.toMillis(delay) / 2)
+
+        runnable.run()
+
+        assertEquals(3,testingLiveData.value)
+        Mockito.verify(observer).onChanged(3)
+    }
+
 }
